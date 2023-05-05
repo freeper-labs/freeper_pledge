@@ -454,11 +454,13 @@ contract Free_Pledge {
     address public exchagneSwap = address(0);
     address public daoAddress = address(0);
 
+
     uint constant lockTime2 = 180; // 180 days
-    uint constant lockTime = 100; // 100 days
+    uint constant lockTime = 100; // 100 daysasd
     uint public releaseRate = 100;
-    uint public stepTime = 1 minutes;   // test set to 1 minutes, for stable use set to 1 days
+    uint public stepTime = 1 days;   // test set to 1 minutes, for stable use set to 1 days
     uint public startTime;
+    uint public stakeFeeRate = 0;
 
     event Pledged(address indexed addr, bytes32 indexed _id, uint indexed _type,  uint amount, uint timestamp);
     event Released(address indexed addr, bytes32 indexed _id, uint indexed amount, uint timestamp);
@@ -514,7 +516,7 @@ contract Free_Pledge {
         require(orderCheck[id]==false,"order already exists");
         orderCheck[id] = true;
         users[msg.sender].allKey.push(id);
-        IERC20(lpAddress).transferFrom(msg.sender, poolAddress, amount);
+        IBEP20(lpAddress).transferFrom(msg.sender, poolAddress, amount);
 
         users[msg.sender].informations[id].lockAmount =  amount;
         users[msg.sender].informations[id].latestReleasedTime = block.timestamp + stepTime;
@@ -556,8 +558,10 @@ contract Free_Pledge {
             uAmount = freeAmount.mul(reserve1).div(reserve0);
         }
         
-        // uint minA = freeAmount.mul(87).div(100).;
-        // uint minB = uAmount.mul(87).div(100);
+        if (stakeFeeRate>0){
+            uint fee = freeAmount.mul(stakeFeeRate).div(1000);
+            IBEP20(freeAddress).transferFrom(msg.sender, daoAddress, fee);
+        }
 
         (uint amountA, uint amountB) = IExchangeSwap(exchagneSwap).liquidityCalculator(freeAddress,usdtAddress,freeAmount,uAmount,minA,minB);
 
@@ -571,7 +575,7 @@ contract Free_Pledge {
         (,, uint liquidity) = IExchangeSwap(exchagneSwap).addLiquidity(freeAddress,usdtAddress,amountA,amountB,minA,minB, address(this), block.timestamp.add(3600));
 
         
-        IERC20(lpAddress).transfer(poolAddress, liquidity);
+        IBEP20(lpAddress).transfer(poolAddress, liquidity);
         
         bytes32 id = keccak256(abi.encodePacked(msg.sender,"1",liquidity,block.timestamp));
         require(orderCheck[id]==false,"order already exists");
@@ -748,7 +752,7 @@ contract Free_Pledge {
             // transfer to user
             IBEP20(usdtAddress).transfer(msg.sender, a.sub(aFee));
             IBEP20(freeAddress).transfer(msg.sender, b.sub(bFee));
-            }
+        }
         // release with no fee, transfer direct to user
         IBEP20(lpAddress).transfer(msg.sender, totalCanReleaseNoFee);
 

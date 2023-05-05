@@ -260,12 +260,12 @@ contract LockRelease {
     uint public releaseAmount = 0;
     string public name;
 
-    constructor(address free, address user, uint totalAmount, uint releaseYears, string memory n)public{
+    constructor(address free, address user, uint amount, uint releaseYears, string memory n){
         // need set receive address and free contractAddress
         freeAddress = free;
         userAddress = user;
         // need set total release amount and total release days
-        totalAmount = 4_000_000 ether;
+        totalAmount = amount;
         releaseDays = releaseYears*365;
         latestReleaseTime = block.timestamp;
         name = n;
