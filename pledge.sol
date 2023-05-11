@@ -416,7 +416,80 @@ interface IExchangeSwap{
   function removeLiquidity(address tokenA, address tokenB, uint256 liquidity, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) external  returns (uint256 , uint256 );
 }
 
-contract Free_Pledge {
+
+/**
+ * @dev Contract module which provides a basic access control mechanism, where
+ * there is an account (an owner) that can be granted exclusive access to
+ * specific functions.
+ *
+ * By default, the owner account will be the one that deploys the contract. This
+ * can later be changed with {transferOwnership}.
+ *
+ * This module is used through inheritance. It will make available the modifier
+ * `onlyOwner`, which can be applied to your functions to restrict their use to
+ * the owner.
+ */
+contract Ownable is Context {
+  address private _owner;
+
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+  /**
+   * @dev Initializes the contract setting the deployer as the initial owner.
+   */
+  constructor () internal {
+    address msgSender = _msgSender();
+    _owner = msgSender;
+    emit OwnershipTransferred(address(0), msgSender);
+  }
+
+  /**
+   * @dev Returns the address of the current owner.
+   */
+  function owner() public view returns (address) {
+    return _owner;
+  }
+
+  /**
+   * @dev Throws if called by any account other than the owner.
+   */
+  modifier onlyOwner() {
+    require(_owner == _msgSender(), "Ownable: caller is not the owner");
+    _;
+  }
+
+  /**
+   * @dev Leaves the contract without owner. It will not be possible to call
+   * `onlyOwner` functions anymore. Can only be called by the current owner.
+   *
+   * NOTE: Renouncing ownership will leave the contract without an owner,
+   * thereby removing any functionality that is only available to the owner.
+   */
+  function renounceOwnership() public onlyOwner {
+    emit OwnershipTransferred(_owner, address(0));
+    _owner = address(0);
+  }
+
+
+  /**
+   * @dev Transfers ownership of the contract to a new account (`newOwner`).
+   * Can only be called by the current owner.
+   */
+  function transferOwnership(address newOwner) public onlyOwner {
+    _transferOwnership(newOwner);
+  }
+
+  /**
+   * @dev Transfers ownership of the contract to a new account (`newOwner`).
+   */
+  function _transferOwnership(address newOwner) internal {
+    require(newOwner != address(0), "Ownable: new owner is the zero address");
+    emit OwnershipTransferred(_owner, newOwner);
+    _owner = newOwner;
+  }
+}
+
+contract Free_Pledge is Ownable{
 
 
     using SafeMath for uint;
@@ -444,7 +517,6 @@ contract Free_Pledge {
 
     address [] whitelist;
 
-    address public owner;
     
     address public usdtAddress = address(0);
     address public freeAddress = address(0);
@@ -475,7 +547,6 @@ contract Free_Pledge {
 
         isWhitelisted[msg.sender] = true;
         lpAddress = lp;
-        owner = msg.sender;
         startTime = getTime(block.timestamp);
         isInitialized = true;
 
@@ -489,10 +560,6 @@ contract Free_Pledge {
         daoAddress = address(0);
     }
 
-    modifier onlyOwner(){
-        require(owner == msg.sender,"not owner");
-        _;
-    }
 
     function checkAllDefine() internal view {
         require(fptAddress != address(0),"please init fptAddress");
@@ -510,6 +577,11 @@ contract Free_Pledge {
     function modifyReleaseFeeRate(uint rate) public onlyOwner {
         require(rate <= 100,"out of range");
         releaseRate = rate;
+    }
+
+    function modifyStakeFeeRate(uint rate) public onlyOwner {
+        require(rate <= 100,"out of range");
+        stakeFeeRate = rate;
     }
 
     /**
@@ -653,6 +725,8 @@ contract Free_Pledge {
         users[msg.sender].informations[_id].status = 2;
         LockInformation memory info = users[msg.sender].informations[_id];
         bytes32 newID = keccak256(abi.encodePacked(msg.sender,"3",info.lockAmount,block.timestamp));
+        require(orderCheck[newID]==false,"order already exists");
+        orderCheck[newID] = true;
         users[msg.sender].allKey.push(newID);
         users[msg.sender].informations[newID].lockAmount =  info.lockAmount;
         users[msg.sender].informations[newID].latestReleasedTime = block.timestamp + stepTime;
