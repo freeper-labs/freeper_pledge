@@ -462,7 +462,7 @@ contract Free_Pledge {
     uint public startTime;
     uint public stakeFeeRate = 0;
 
-    event Pledged(address indexed addr, bytes32 indexed _id, uint indexed _type,  uint amount, uint timestamp);
+    event Pledged(address indexed addr, bytes32 indexed _id, uint indexed _type,  uint amount, uint timestamp ,uint pledge_type);
     event Released(address indexed addr, bytes32 indexed _id, uint indexed amount, uint timestamp);
     event PledgeFinished(address indexed addr, bytes32 indexed _id, uint timestamp);
     event PledgeChanged(address indexed addr, bytes32 indexed oldId, bytes32 indexed newId, uint timestamp);
@@ -494,6 +494,13 @@ contract Free_Pledge {
         _;
     }
 
+    function checkAllDefine() internal view {
+        require(fptAddress != address(0),"please init fptAddress");
+        require(poolAddress != address(0),"please init poolAddress");
+        require(exchagneSwap != address(0), "please init exchangeSwap");
+        require(daoAddress != address(0), "please init daoAddress");
+    }
+
     
     function getTime(uint time) public view returns(uint){
         uint t = time.div(stepTime).mul(stepTime);
@@ -511,12 +518,13 @@ contract Free_Pledge {
     function stakeLp(uint amount, uint _type) public {
         require(amount >= 0.1 ether ,"nozero");
         require(_type>0 && _type <=4,"invalid pledge type");
+        checkAllDefine();
         bytes32 id = keccak256(abi.encodePacked(msg.sender,"2",amount,block.timestamp));
         // users[msg.sender].allKey.push(id);
         require(orderCheck[id]==false,"order already exists");
         orderCheck[id] = true;
         users[msg.sender].allKey.push(id);
-        IBEP20(lpAddress).transferFrom(msg.sender, poolAddress, amount);
+        IBEP20(lpAddress).transferFrom(msg.sender, address(this), amount);
 
         users[msg.sender].informations[id].lockAmount =  amount;
         users[msg.sender].informations[id].latestReleasedTime = block.timestamp + stepTime;
@@ -533,7 +541,7 @@ contract Free_Pledge {
         users[msg.sender].informations[id].pledge_type = 2;
         users[msg.sender].allKey.push(id);
         
-        emit Pledged(msg.sender, id, _type,  amount, block.timestamp);
+        emit Pledged(msg.sender, id, _type,  amount, block.timestamp,2);
 
     }
 
@@ -547,6 +555,7 @@ contract Free_Pledge {
     function stakeWithUSD(uint amount,  uint _type,uint minA, uint minB) public {
         require(amount >= 1 ether ,"not reach minimum amount");
         require(_type>0 && _type <=2,"invalid pledge type");
+        checkAllDefine();
 
         (uint reserve0, uint reserve1, ) = IPancakePair(lpAddress).getReserves();
         require(reserve0 > 0 && reserve1 > 0,"error lp");
@@ -575,7 +584,7 @@ contract Free_Pledge {
         (,, uint liquidity) = IExchangeSwap(exchagneSwap).addLiquidity(freeAddress,usdtAddress,amountA,amountB,minA,minB, address(this), block.timestamp.add(3600));
 
         
-        IBEP20(lpAddress).transfer(poolAddress, liquidity);
+        // IERC20(lpAddress).transfer(address(this), liquidity);
         
         bytes32 id = keccak256(abi.encodePacked(msg.sender,"1",liquidity,block.timestamp));
         require(orderCheck[id]==false,"order already exists");
@@ -590,7 +599,7 @@ contract Free_Pledge {
 
         users[msg.sender].lpAmount = users[msg.sender].lpAmount.add(liquidity);
 
-        emit Pledged(msg.sender, id, _type,  liquidity, block.timestamp);
+        emit Pledged(msg.sender, id, _type,  liquidity, block.timestamp,1);
         
     }
 
@@ -638,6 +647,8 @@ contract Free_Pledge {
     */
     function reStake(bytes32 _id) public {
         require(users[msg.sender].informations[_id].status == 1,"pledge has been finished");
+        require(users[msg.sender].informations[_id]._type == 1, "invalid type");
+        require(users[msg.sender].informations[_id].pledge_type == 1, "invalid pledge_type");
         require(block.timestamp > users[msg.sender].informations[_id].latestReleasedTime && getTime(block.timestamp).sub(getTime(users[msg.sender].informations[_id].latestReleasedTime)).div(stepTime)>=lockTime,"pledge doesn't reach the time");
         users[msg.sender].informations[_id].status = 2;
         LockInformation memory info = users[msg.sender].informations[_id];
@@ -651,7 +662,7 @@ contract Free_Pledge {
         users[msg.sender].informations[newID].pledge_type = 2;  // not burn for get reward
         emit PledgeChanged(msg.sender, _id, newID, block.timestamp);
  
-        emit Pledged(msg.sender, newID, 2,  info.lockAmount, block.timestamp);
+        emit Pledged(msg.sender, newID, 2,  info.lockAmount, block.timestamp, 2);
 
     }
 
@@ -676,11 +687,12 @@ contract Free_Pledge {
     /**
      * get release
      */ 
-    function withdraw(bytes32 [] memory ids) public returns(uint,uint){
+    function withdraw(bytes32 [] memory ids, uint minA, uint minB) public returns(uint,uint){
         uint len = ids.length;
         uint totalCanRelease = 0;
         uint totalCanReleaseNoFee = 0;
         for (uint i = 0 ;i < len ;i++){
+            bytes32 _id = ids[i];
             if(users[msg.sender].informations[ids[i]]._type == 3){
                 continue;
             }
@@ -689,44 +701,47 @@ contract Free_Pledge {
             }
             if (users[msg.sender].informations[ids[i]].status == 1){
                 uint a = users[msg.sender].informations[ids[i]].lockAmount;
-                if (users[msg.sender].informations[ids[i]]._type == 1 && block.timestamp > users[msg.sender].informations[ids[i]].latestReleasedTime && getTime(block.timestamp).sub(getTime(users[msg.sender].informations[ids[i]].latestReleasedTime)).div(stepTime)>=lockTime){
+                uint releaseTime = users[msg.sender].informations[ids[i]].latestReleasedTime;
+                uint releaseAmount = users[msg.sender].informations[ids[i]].releasedAmount;
+                uint releaseTotalDay = users[msg.sender].informations[ids[i]].totalReleaseDay;
+                if (users[msg.sender].informations[ids[i]]._type == 1 && block.timestamp > releaseTime && getTime(block.timestamp).sub(getTime(releaseTime)).div(stepTime)>=lockTime){
                     if (users[msg.sender].informations[ids[i]].pledge_type == 1){
                         totalCanRelease = totalCanRelease.add(a);
                     }else {
                         totalCanReleaseNoFee = totalCanReleaseNoFee.add(a);
                     }
-                    users[msg.sender].informations[ids[i]].releasedAmount = users[msg.sender].informations[ids[i]].releasedAmount.add(a);
-                    users[msg.sender].informations[ids[i]].latestReleasedTime = block.timestamp;
-                    users[msg.sender].informations[ids[i]].status = 2;
+                    users[msg.sender].informations[_id].releasedAmount = releaseAmount.add(a);
+                    users[msg.sender].informations[_id].latestReleasedTime = block.timestamp;
+                    users[msg.sender].informations[_id].status = 2;
                     emit Released(msg.sender, ids[i], a, block.timestamp);
                     emit PledgeFinished(msg.sender, ids[i], block.timestamp);
                 }else if(users[msg.sender].informations[ids[i]]._type == 2 ){
-                    uint d = getTime(block.timestamp).sub(getTime(users[msg.sender].informations[ids[i]].latestReleasedTime)).div(stepTime);
+                    uint d = getTime(block.timestamp).sub(getTime(releaseTime)).div(stepTime);
                     if ( d > 0){
-                        if (d >= users[msg.sender].informations[ids[i]].totalReleaseDay){
-                            d =  users[msg.sender].informations[ids[i]].totalReleaseDay;
-                            users[msg.sender].informations[ids[i]].status = 2;
+                        if (d >= users[msg.sender].informations[_id].totalReleaseDay){
+                            d =  users[msg.sender].informations[_id].totalReleaseDay;
+                            users[msg.sender].informations[_id].status = 2;
                         }
                     }
-                    users[msg.sender].informations[ids[i]].totalReleaseDay = users[msg.sender].informations[ids[i]].totalReleaseDay.sub(d);
+                    users[msg.sender].informations[_id].totalReleaseDay = releaseTotalDay.sub(d);
                     uint b = a.mul(d).div(lockTime);
-                    users[msg.sender].informations[ids[i]].releasedAmount = users[msg.sender].informations[ids[i]].releasedAmount.add(b);
-                    if (users[msg.sender].informations[ids[i]].pledge_type == 1){
+                    users[msg.sender].informations[_id].releasedAmount = releaseAmount.add(b);
+                    if (users[msg.sender].informations[_id].pledge_type == 1){
                         totalCanRelease = totalCanRelease.add(b);
                     }else{
                         totalCanReleaseNoFee = totalCanReleaseNoFee.add(b);
                     }
-                    users[msg.sender].informations[ids[i]].latestReleasedTime = block.timestamp;
-                    emit Released(msg.sender, ids[i], b, block.timestamp);
-                    if(users[msg.sender].informations[ids[i]].releasedAmount==a){
-                        users[msg.sender].informations[ids[i]].status = 2;
+                    users[msg.sender].informations[_id].latestReleasedTime = block.timestamp;
+                    emit Released(msg.sender, _id, b, block.timestamp);
+                    if(users[msg.sender].informations[_id].releasedAmount==a){
+                        users[msg.sender].informations[_id].status = 2;
                         emit PledgeFinished(msg.sender, ids[i], block.timestamp);
                     }
-                }else if (users[msg.sender].informations[ids[i]]._type == 4 && block.timestamp > users[msg.sender].informations[ids[i]].latestReleasedTime && getTime(block.timestamp).sub(getTime(users[msg.sender].informations[ids[i]].latestReleasedTime)).div(stepTime)>=lockTime2){
+                }else if (users[msg.sender].informations[ids[i]]._type == 4 && block.timestamp > releaseTime && getTime(block.timestamp).sub(getTime(releaseTime)).div(stepTime)>=lockTime2){
                     totalCanReleaseNoFee = totalCanReleaseNoFee.add(a);
-                    users[msg.sender].informations[ids[i]].releasedAmount = users[msg.sender].informations[ids[i]].releasedAmount.add(a);
-                    users[msg.sender].informations[ids[i]].latestReleasedTime = block.timestamp;
-                    users[msg.sender].informations[ids[i]].status = 2;
+                    users[msg.sender].informations[_id].releasedAmount = users[msg.sender].informations[_id].releasedAmount.add(a);
+                    users[msg.sender].informations[_id].latestReleasedTime = block.timestamp;
+                    users[msg.sender].informations[_id].status = 2;
                     emit Released(msg.sender, ids[i], a, block.timestamp);
                     emit PledgeFinished(msg.sender, ids[i], block.timestamp);
                 }
@@ -739,7 +754,7 @@ contract Free_Pledge {
         // release with fee charge, need remove liquidty
         if (totalCanRelease>0){
             IBEP20(lpAddress).approve(exchagneSwap,totalCanRelease);
-            (uint a, uint b) = IExchangeSwap(exchagneSwap).removeLiquidity(usdtAddress, freeAddress, totalCanRelease, 0, 0, address(this), block.timestamp.add(100));
+            (uint a, uint b) = IExchangeSwap(exchagneSwap).removeLiquidity(usdtAddress, freeAddress, totalCanRelease, minA, minB, address(this), block.timestamp.add(100));
 
             //*****************************************/
             //calculate fee

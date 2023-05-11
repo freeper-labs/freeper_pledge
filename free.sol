@@ -374,7 +374,7 @@ contract Free is Context, IBEP20, Ownable {
   }
   mapping(address => Swap) swapAddress;
   uint256 public sellFeeRate = 100;
-  uint256 public buyFeeReate = 20;
+  uint256 public buyFeeReate = 40;
 
   mapping(address => bool) needFeeAddress;
   mapping(address => bool) noFeeAddress;
@@ -646,7 +646,7 @@ contract Free is Context, IBEP20, Ownable {
   */
   function setFeeRate(uint256 rate,uint i) public onlyOwner{ 
       if (i == 0){
-        require(rate <= 20,"fee rate is too high");
+        require(rate <= 40,"fee rate is too high");
         buyFeeReate = rate;
       }else{
         require(rate <= 100,"fee rate is too high");
