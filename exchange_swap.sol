@@ -1,11 +1,8 @@
-/**
- *Submitted for verification at BscScan.com on 2020-09-04
-*/
-
+//SPDX-License-Identifier: MIT
 pragma solidity 0.5.17;
 
 
-interface IMMPair {
+interface IFFPair {
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event Transfer(address indexed from, address indexed to, uint256 value);
 
@@ -100,14 +97,14 @@ interface IMMPair {
     function initialize(address, address) external;
 }
 
-library MMLibrary {
+library FFLibrary {
     using SafeMath for uint256;
 
     // returns sorted token addresses, used to handle return values from pairs sorted in this order
     function sortTokens(address tokenA, address tokenB) internal pure returns (address token0, address token1) {
-        require(tokenA != tokenB, "MMLibrary: IDENTICAL_ADDRESSES");
+        require(tokenA != tokenB, "FFLibrary: IDENTICAL_ADDRESSES");
         (token0, token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), "MMLibrary: ZERO_ADDRESS");
+        require(token0 != address(0), "FFLibrary: ZERO_ADDRESS");
     }
 
     // calculates the CREATE2 address for a pair without making any external calls
@@ -124,8 +121,7 @@ library MMLibrary {
                         hex"ff",
                         factory,
                         keccak256(abi.encodePacked(token0, token1)),
-                        // hex"a5934690703a592a07e841ca29d5e5c79b5e22ed4749057bb216dc31100be1c0" // init code hash
-                        hex"51f2a056363c5ac40168346e4740dc062f6443414f19e97ad8bfa66028d01186"
+                        hex"00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5"
                     )
                 )
             )
@@ -140,7 +136,7 @@ library MMLibrary {
     ) internal view returns (uint256 reserveA, uint256 reserveB) {
         (address token0, ) = sortTokens(tokenA, tokenB);
         pairFor(factory, tokenA, tokenB);
-        (uint256 reserve0, uint256 reserve1, ) = IMMPair(pairFor(factory, tokenA, tokenB)).getReserves();
+        (uint256 reserve0, uint256 reserve1, ) = IFFPair(pairFor(factory, tokenA, tokenB)).getReserves();
         (reserveA, reserveB) = tokenA == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
     }
 
@@ -150,8 +146,8 @@ library MMLibrary {
         uint256 reserveA,
         uint256 reserveB
     ) internal pure returns (uint256 amountB) {
-        require(amountA > 0, "MMLibrary: INSUFFICIENT_AMOUNT");
-        require(reserveA > 0 && reserveB > 0, "MMLibrary: INSUFFICIENT_LIQUIDITY");
+        require(amountA > 0, "FFLibrary: INSUFFICIENT_AMOUNT");
+        require(reserveA > 0 && reserveB > 0, "FFLibrary: INSUFFICIENT_LIQUIDITY");
         amountB = amountA.mul(reserveB) / reserveA;
     }
 
@@ -161,8 +157,8 @@ library MMLibrary {
         uint256 reserveIn,
         uint256 reserveOut
     ) internal pure returns (uint256 amountOut) {
-        require(amountIn > 0, "MMLibrary: INSUFFICIENT_INPUT_AMOUNT");
-        require(reserveIn > 0 && reserveOut > 0, "MMLibrary: INSUFFICIENT_LIQUIDITY");
+        require(amountIn > 0, "FFLibrary: INSUFFICIENT_INPUT_AMOUNT");
+        require(reserveIn > 0 && reserveOut > 0, "FFLibrary: INSUFFICIENT_LIQUIDITY");
         uint256 amountInWithFee = amountIn.mul(9975);
         uint256 numerator = amountInWithFee.mul(reserveOut);
         uint256 denominator = reserveIn.mul(10000).add(amountInWithFee);
@@ -175,8 +171,8 @@ library MMLibrary {
         uint256 reserveIn,
         uint256 reserveOut
     ) internal pure returns (uint256 amountIn) {
-        require(amountOut > 0, "MMLibrary: INSUFFICIENT_OUTPUT_AMOUNT");
-        require(reserveIn > 0 && reserveOut > 0, "MMLibrary: INSUFFICIENT_LIQUIDITY");
+        require(amountOut > 0, "FFLibrary: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(reserveIn > 0 && reserveOut > 0, "FFLibrary: INSUFFICIENT_LIQUIDITY");
         uint256 numerator = reserveIn.mul(amountOut).mul(10000);
         uint256 denominator = reserveOut.sub(amountOut).mul(9975);
         amountIn = (numerator / denominator).add(1);
@@ -188,7 +184,7 @@ library MMLibrary {
         uint256 amountIn,
         address[] memory path
     ) internal view returns (uint256[] memory amounts) {
-        require(path.length >= 2, "MMLibrary: INVALID_PATH");
+        require(path.length >= 2, "FFLibrary: INVALID_PATH");
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
         for (uint256 i; i < path.length - 1; i++) {
@@ -203,7 +199,7 @@ library MMLibrary {
         uint256 amountOut,
         address[] memory path
     ) internal view returns (uint256[] memory amounts) {
-        require(path.length >= 2, "MMLibrary: INVALID_PATH");
+        require(path.length >= 2, "FFLibrary: INVALID_PATH");
         amounts = new uint256[](path.length);
         amounts[amounts.length - 1] = amountOut;
         for (uint256 i = path.length - 1; i > 0; i--) {
@@ -590,10 +586,10 @@ contract ExchangeSwap is Ownable  {
 
 
     // need set router address before deploy
-    address routerAddress = 0x2e4808F821E8418427027b9259bBe87f212D8bEf;
+    address public routerAddress = 0x10ED43C718714eb63d5aA57B78B54704E256024E;
 
     // need set factory address before deploy 
-    address factory = 0x7D978090C706605F3109e41aCF0b39F9B905679b;
+    address public factory = 0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73;
 
 
     constructor()public{
@@ -664,16 +660,16 @@ contract ExchangeSwap is Ownable  {
         uint256 amountAMin,
         uint256 amountBMin
     ) internal view returns (uint256 amountA, uint256 amountB) {
-        (uint256 reserveA, uint256 reserveB) = MMLibrary.getReserves(factory, tokenA, tokenB);
+        (uint256 reserveA, uint256 reserveB) = FFLibrary.getReserves(factory, tokenA, tokenB);
         if (reserveA == 0 && reserveB == 0) {
             (amountA, amountB) = (amountADesired, amountBDesired);
         } else {
-            uint256 amountBOptimal = MMLibrary.quote(amountADesired, reserveA, reserveB);
+            uint256 amountBOptimal = FFLibrary.quote(amountADesired, reserveA, reserveB);
             if (amountBOptimal <= amountBDesired) {
                 require(amountBOptimal >= amountBMin, "PancakeRouter: INSUFFICIENT_B_AMOUNT");
                 (amountA, amountB) = (amountADesired, amountBOptimal);
             } else {
-                uint256 amountAOptimal = MMLibrary.quote(amountBDesired, reserveB, reserveA);
+                uint256 amountAOptimal = FFLibrary.quote(amountBDesired, reserveB, reserveA);
                 assert(amountAOptimal <= amountADesired);
                 require(amountAOptimal >= amountAMin, "PancakeRouter: INSUFFICIENT_A_AMOUNT");
                 (amountA, amountB) = (amountAOptimal, amountBDesired);
@@ -710,7 +706,7 @@ contract ExchangeSwap is Ownable  {
     * normal remove liquidity, no fee charge
     */
     function removeLiquidity(address tokenA, address tokenB, uint256 liquidity, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) public returns (uint256 , uint256 ) {
-      address lp = MMLibrary.pairFor(factory, tokenA, tokenB);
+      address lp = FFLibrary.pairFor(factory, tokenA, tokenB);
       IBEP20(lp).transferFrom(msg.sender, address(this), liquidity);
       IBEP20(lp).approve(routerAddress, liquidity);
       (uint a, uint b) = ISwap(routerAddress).removeLiquidity(tokenA,tokenB,liquidity,amountAMin,amountBMin,address(this),deadline);

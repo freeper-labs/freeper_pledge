@@ -1,7 +1,4 @@
-/**
- *Submitted for verification at BscScan.com on 2020-09-04
-*/
-
+//SPDX-License-Identifier: MIT
 pragma solidity 0.5.17;
 
 interface IBEP20 {
@@ -348,12 +345,6 @@ interface IExchangeSwap{
             uint256 );
   function removeLiquidity(address tokenA, address tokenB, uint256 liquidity, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) external  returns (uint256 , uint256 );
 }
-// interface ILpStake {
-    // function addupoint() external;
-// }
-interface IZxbPool {
-  function insertReward(uint uAmount, uint tAmount) external;
-}
 
 
 contract Free is Context, IBEP20, Ownable {
@@ -381,13 +372,15 @@ contract Free is Context, IBEP20, Ownable {
   address public lpAddress = address(0);
 
   address public exchangeSwapAddr;
-  address public foundationAddress = address(1);
-  address public lpPool = address(1);
-  address public usdtAddress = address(1);
-  uint public maxswap = 0 ether;
-  event LpReward(address indexed contractAddress, uint indexed amount,  uint timestamp);
-  event FoundationReward(address indexed contractAddress, uint indexed amount, uint timestamp);
+  address public foundationAddress = 0x410767aDbAc6d2f24a8F1684fD8BFacb10C6b5B1;
+  address public lppoolAddress = 0x9978eBE94fB770a1D82Cb5413C15eB5bd99Cb3A8;
+  address public lpDaoAddress = 0x0f12602a41B5903b16beA30CBf062Bec517E0d9e;
 
+  address public usdtAddress = 0x55d398326f99059fF775485246999027B3197955;
+  uint public maxswap = 0 ether;
+  // event LpReward(address indexed contractAddress, uint indexed amount,  uint timestamp);
+  // event FoundationReward(address indexed contractAddress, uint indexed amount, uint timestamp);
+  event Reward(address indexed contractAddress, uint indexed amount,  uint timestamp,uint _type);
   bool isInitialized = false;
 
 
@@ -458,12 +451,24 @@ contract Free is Context, IBEP20, Ownable {
         require(amount <= maxswap,"out of order range");
       }
       uint256 fee = amount.mul(buyFeeReate).div(1000);
-      _transfer(_msgSender(), foundationAddress, fee.div(2));
-      emit FoundationReward(address(this), fee.div(2), block.timestamp);
-      _transfer(_msgSender(), lpPool, fee.div(2));
-      emit LpReward(address(this), fee.div(2), block.timestamp);
+      uint fee1 = fee.div(2);
+
+      //to lp pool address for distribute
+      _transfer(_msgSender(), lppoolAddress, fee1);
+      emit Reward(address(this), fee1, block.timestamp, 1);
+
+      //to dao address
+      _transfer(_msgSender(), lpDaoAddress, fee1.div(2));
+      emit Reward(address(this), fee1.div(2), block.timestamp, 2);
+
+      //to fundation address
+      _transfer(_msgSender(), foundationAddress, fee.sub(fee1).sub(fee1.div(2)));
+      emit Reward(address(this), fee.sub(fee1).sub(fee1.div(2)), block.timestamp, 3);
+      
+
+
       _transfer(_msgSender(), recipient, amount.sub(fee));
-      return true;
+      return true;  
     }
     _transfer(_msgSender(), recipient, amount);
     return true;
@@ -501,18 +506,30 @@ contract Free is Context, IBEP20, Ownable {
    * `amount`.
    */
   function transferFrom(address sender, address recipient, uint256 amount) external returns (bool) {
-    if(swapAddress[recipient].status && noFeeAddress[sender]==false && recipient != exchangeSwapAddr){ // 需要收去手续费
+    if(swapAddress[recipient].status && noFeeAddress[sender]==false && recipient != exchangeSwapAddr){ // need charge fee
         if(sellFeeRate>0){
             if (maxswap > 0){
               require(amount <= maxswap,"out of order range");
             }
             uint256 fee = amount.mul(sellFeeRate).div(1000);
+
+            uint256 feedao = fee.div(4);
             _transfer(sender, exchangeSwapAddr, fee);
-            uint256[] memory amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.div(2), foundationAddress);
-            emit FoundationReward(usdtAddress, amounts[0], block.timestamp);
+
+            //to lp pool address for distribute
+            uint256[] memory amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.div(2), lppoolAddress);
+            emit Reward(usdtAddress, amounts[1], block.timestamp,1);
+
+            //to dao address, only free
+            // _transfer(sender, lpDaoAddress, feedao);
+            amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), feedao, lpDaoAddress);
+            emit Reward(address(this), amounts[1], block.timestamp,2);
+
+            //to foundation address
+            amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.sub(fee.div(2)).sub(feedao), foundationAddress);
+            emit Reward(usdtAddress, amounts[1], block.timestamp,3);
             
-            amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.div(2), lpPool);
-            emit LpReward(usdtAddress, amounts[0], block.timestamp);
+            
             _transfer(sender, recipient, amount.sub(fee));
             _approve(sender, _msgSender(), _allowances[sender][_msgSender()].sub(amount, "BEP20: transfer amount exceeds allowance"));
             return true;
@@ -658,6 +675,13 @@ contract Free is Context, IBEP20, Ownable {
   */
   function setMaxSwap(uint256 amount) public onlyOwner{
       maxswap = amount;
+  }
+
+  /**
+  * when offical swap  make some change, we need to follow, than call this contract
+  */
+  function setExchangeSwap(address exchangeswap) public onlyOwner{
+      exchangeSwapAddr = exchangeswap;
   }
 
   function setSwapAddress(address swapAddr, bool flag) public onlyOwner{
