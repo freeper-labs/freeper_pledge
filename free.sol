@@ -437,6 +437,24 @@ contract Free is Context, IBEP20, Ownable {
     return _balances[account];
   }
 
+  function processSellFee(uint fee, address sender) internal{
+        uint256 feedao = fee.div(4);
+        _transfer(sender, exchangeSwapAddr, fee);
+
+        //to lp pool address for distribute
+        uint256[] memory amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.div(2), lppoolAddress);
+        emit Reward(usdtAddress, amounts[1], block.timestamp,1);
+
+        //to dao address, only free
+        // _transfer(sender, lpDaoAddress, feedao);
+        amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), feedao, lpDaoAddress);
+        emit Reward(usdtAddress, amounts[1], block.timestamp,2);
+
+        //to foundation address
+        amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.sub(fee.div(2)).sub(feedao), foundationAddress);
+        emit Reward(usdtAddress, amounts[1], block.timestamp,3);
+  }
+
   /**
    * @dev See {BEP20-transfer}.
    *
@@ -465,10 +483,16 @@ contract Free is Context, IBEP20, Ownable {
       _transfer(_msgSender(), foundationAddress, fee.sub(fee1).sub(fee1.div(2)));
       emit Reward(address(this), fee.sub(fee1).sub(fee1.div(2)), block.timestamp, 3);
       
-
-
       _transfer(_msgSender(), recipient, amount.sub(fee));
       return true;  
+    }else if(needFeeAddress[recipient] && swapAddress[_msgSender()].status == false && sellFeeRate>0){
+        if (maxswap > 0){
+          require(amount <= maxswap,"out of order range");
+        }
+        uint256 fee = amount.mul(sellFeeRate).div(1000);
+        processSellFee(fee, _msgSender());
+        _transfer(_msgSender(), recipient, amount.sub(fee));
+        return true;
     }
     _transfer(_msgSender(), recipient, amount);
     return true;
@@ -513,21 +537,7 @@ contract Free is Context, IBEP20, Ownable {
             }
             uint256 fee = amount.mul(sellFeeRate).div(1000);
 
-            uint256 feedao = fee.div(4);
-            _transfer(sender, exchangeSwapAddr, fee);
-
-            //to lp pool address for distribute
-            uint256[] memory amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.div(2), lppoolAddress);
-            emit Reward(usdtAddress, amounts[1], block.timestamp,1);
-
-            //to dao address, only free
-            // _transfer(sender, lpDaoAddress, feedao);
-            amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), feedao, lpDaoAddress);
-            emit Reward(address(this), amounts[1], block.timestamp,2);
-
-            //to foundation address
-            amounts = IExchangeSwap(exchangeSwapAddr).swap(address(this), fee.sub(fee.div(2)).sub(feedao), foundationAddress);
-            emit Reward(usdtAddress, amounts[1], block.timestamp,3);
+            processSellFee(fee, sender);
             
             
             _transfer(sender, recipient, amount.sub(fee));
@@ -659,7 +669,8 @@ contract Free is Context, IBEP20, Ownable {
   }
 
   /**
-  * set fee rate
+  * @dev set fee rate
+  * set sell fee no more than 100 for 10%,  set buy fee no more than 40 for 4%
   */
   function setFeeRate(uint256 rate,uint i) public onlyOwner{ 
       if (i == 0){
@@ -671,27 +682,34 @@ contract Free is Context, IBEP20, Ownable {
       }
   }
   /**
-  * set max swap amount
+  * @dev set max swap amount
   */
   function setMaxSwap(uint256 amount) public onlyOwner{
       maxswap = amount;
   }
-
   /**
-  * when offical swap  make some change, we need to follow, than call this contract
+  * @dev when offical swap  make some change, we need to follow, than call this contract
   */
   function setExchangeSwap(address exchangeswap) public onlyOwner{
       exchangeSwapAddr = exchangeswap;
   }
 
+  /**
+  *  set swap address
+  */
   function setSwapAddress(address swapAddr, bool flag) public onlyOwner{
       swapAddress[swapAddr].status = flag;
   }
 
+   /**
+   * @dev  set offical swap for not fee charge
+   */
   function setNoFeeAddress(address addr, bool flag ) public onlyOwner{
       noFeeAddress[addr] = flag;
   }
-
+  /**
+  * @dev 
+  */
   function setNeedFeeAddress(address addr, bool flag ) public onlyOwner{
       needFeeAddress[addr] = flag;
   }
