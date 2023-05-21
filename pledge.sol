@@ -524,40 +524,45 @@ contract Free_Pledge is Ownable{
     address public lpAddress = address(0);
     address public poolAddress = address(0);
     address public exchagneSwap = address(0);
-    address public daoAddress = address(0);
+    address public lpdaoAddress = address(0);
+    address public foundaionAddress = address(0);
+    address public lppoolAddress = address(0);
+    address public burnWithdrawAddress = address(0);
 
 
     uint constant lockTime2 = 180; // 180 days
     uint constant lockTime = 100; // 100 daysasd
     uint public releaseRate = 100;
-    uint public stepTime = 1 days;   // test set to 1 minutes, for stable use set to 1 days
-    uint public startTime;
+    uint public burnRate_lp = 100;
+    uint public stepTime = 1 minutes;   // test set to 1 minutes, for stable use set to 1 days
     uint public stakeFeeRate = 0;
 
     event Pledged(address indexed addr, bytes32 indexed _id, uint indexed _type,  uint amount, uint timestamp ,uint pledge_type);
     event Released(address indexed addr, bytes32 indexed _id, uint indexed amount, uint timestamp);
     event PledgeFinished(address indexed addr, bytes32 indexed _id, uint timestamp);
     event PledgeChanged(address indexed addr, bytes32 indexed oldId, bytes32 indexed newId, uint timestamp);
-
+    event Reward2(address indexed contractAddress, uint indexed amount,  uint timestamp,uint _type);
     bool isInitialized = false;
 
     mapping (bytes32=>bool) orderCheck;
 
-    constructor(address uAddr, address free, address lp) public{
+    constructor(address uAddr, address free, address swap, address lp) public{
 
         isWhitelisted[msg.sender] = true;
         lpAddress = lp;
-        startTime = getTime(block.timestamp);
         isInitialized = true;
 
         // need set address here
         usdtAddress = uAddr;
         freeAddress = free;
-        fptAddress = address(0);
+        fptAddress = 0x0b9568bA77D2f0828E91f4dF0227479a7B7b0483;
         lpAddress = lp;
-        poolAddress = address(0);
-        exchagneSwap = address(0);
-        daoAddress = address(0);
+        poolAddress = 0xfB751E2A056053eCF6F78aaEDEe4C091280752B4;
+        exchagneSwap = swap;
+        lpdaoAddress = 0x0f12602a41B5903b16beA30CBf062Bec517E0d9e;
+        foundaionAddress = 0x410767aDbAc6d2f24a8F1684fD8BFacb10C6b5B1;
+        lppoolAddress = 0x9978eBE94fB770a1D82Cb5413C15eB5bd99Cb3A8;
+        burnWithdrawAddress = 0x17d3B7e77d6606898CAcbF1Ba2D13f01c7aC0cC5;
     }
 
 
@@ -565,18 +570,23 @@ contract Free_Pledge is Ownable{
         require(fptAddress != address(0),"please init fptAddress");
         require(poolAddress != address(0),"please init poolAddress");
         require(exchagneSwap != address(0), "please init exchangeSwap");
-        require(daoAddress != address(0), "please init daoAddress");
+        require(lpdaoAddress != address(0), "please init daoAddress");
     }
 
     
-    function getTime(uint time) public view returns(uint){
-        uint t = time.div(stepTime).mul(stepTime);
-        return t;
-    }
+    // function getTime(uint time) public view returns(uint){
+    //     uint t = time.div(stepTime).mul(stepTime);
+    //     return t;
+    // }
 
     function modifyReleaseFeeRate(uint rate) public onlyOwner {
         require(rate <= 100,"out of range");
         releaseRate = rate;
+    }
+
+    function modifyBurnRateLp(uint rate) public onlyOwner {
+        require(rate <= 100,"out of range");
+        burnRate_lp = rate;
     }
 
     function modifyStakeFeeRate(uint rate) public onlyOwner {
@@ -588,7 +598,7 @@ contract Free_Pledge is Ownable{
     *  stake lp, _type 1  lock 100 days, 2 lock 100 days and every day release 1%, 3 current stake, 4 lock 180 days 
     */
     function stakeLp(uint amount, uint _type) public {
-        require(amount >= 0.1 ether ,"nozero");
+        require(amount >= 10 ether ,"not reach minimum amount");
         require(_type>0 && _type <=4,"invalid pledge type");
         checkAllDefine();
         bytes32 id = keccak256(abi.encodePacked(msg.sender,"2",amount,block.timestamp));
@@ -599,7 +609,7 @@ contract Free_Pledge is Ownable{
         IBEP20(lpAddress).transferFrom(msg.sender, address(this), amount);
 
         users[msg.sender].informations[id].lockAmount =  amount;
-        users[msg.sender].informations[id].latestReleasedTime = block.timestamp + stepTime;
+        users[msg.sender].informations[id].latestReleasedTime = block.timestamp;
         if (_type == 4){
             users[msg.sender].informations[id].totalReleaseDay = lockTime2;
         }else{
@@ -625,7 +635,7 @@ contract Free_Pledge is Ownable{
     *  _type it for stake type
     */
     function stakeWithUSD(uint amount,  uint _type,uint minA, uint minB) public {
-        require(amount >= 1 ether ,"not reach minimum amount");
+        require(amount >= 1000 ether ,"not reach minimum amount");
         require(_type>0 && _type <=2,"invalid pledge type");
         checkAllDefine();
 
@@ -641,7 +651,7 @@ contract Free_Pledge is Ownable{
         
         if (stakeFeeRate>0){
             uint fee = freeAmount.mul(stakeFeeRate).div(1000);
-            IBEP20(freeAddress).transferFrom(msg.sender, daoAddress, fee);
+            IBEP20(freeAddress).transferFrom(msg.sender, lpdaoAddress, fee);
         }
 
         (uint amountA, uint amountB) = IExchangeSwap(exchagneSwap).liquidityCalculator(freeAddress,usdtAddress,freeAmount,uAmount,minA,minB);
@@ -663,7 +673,7 @@ contract Free_Pledge is Ownable{
         orderCheck[id] = true;
         users[msg.sender].allKey.push(id);
         users[msg.sender].informations[id].lockAmount =  liquidity;
-        users[msg.sender].informations[id].latestReleasedTime = block.timestamp + stepTime;
+        users[msg.sender].informations[id].latestReleasedTime = block.timestamp;
         users[msg.sender].informations[id].totalReleaseDay = lockTime;
         users[msg.sender].informations[id].status = 1;
         users[msg.sender].informations[id]._type = _type;
@@ -688,7 +698,7 @@ contract Free_Pledge is Ownable{
         }
 
         if(_type == 1){
-            if (block.timestamp > users[addr].informations[_id].latestReleasedTime && getTime(block.timestamp).sub(getTime(users[addr].informations[_id].latestReleasedTime)).div(stepTime)>=lockTime){
+            if (block.timestamp > users[addr].informations[_id].latestReleasedTime && block.timestamp.sub(users[addr].informations[_id].latestReleasedTime).div(stepTime)>=lockTime){
                 return (true, users[addr].informations[_id].lockAmount.sub(users[addr].informations[_id].releasedAmount)); 
             }
             return (false, 0);
@@ -696,18 +706,20 @@ contract Free_Pledge is Ownable{
         if(_type == 2)
         {
             if (block.timestamp > users[addr].informations[_id].latestReleasedTime ){
-                uint ds = getTime(block.timestamp).sub(getTime(users[addr].informations[_id].latestReleasedTime)).div(stepTime);
+                uint ds = block.timestamp.sub(users[addr].informations[_id].latestReleasedTime).div(stepTime);
                 if (ds >= users[addr].informations[_id].totalReleaseDay){
                     ds =  users[addr].informations[_id].totalReleaseDay;
                 }
-                return (true, users[addr].informations[_id].lockAmount.mul(ds).div(lockTime)); 
+                if (ds > 0){
+                    return (true, users[addr].informations[_id].lockAmount.mul(ds).div(lockTime)); 
+                }
                     
             }
             return (false, 0);
         }
 
         if(_type == 4){
-            if (block.timestamp > users[addr].informations[_id].latestReleasedTime && getTime(block.timestamp).sub(getTime(users[addr].informations[_id].latestReleasedTime)).div(stepTime)>=lockTime2){
+            if (block.timestamp > users[addr].informations[_id].latestReleasedTime && block.timestamp.sub(users[addr].informations[_id].latestReleasedTime).div(stepTime)>=lockTime2){
                 return (true, users[addr].informations[_id].lockAmount.sub(users[addr].informations[_id].releasedAmount)); 
             }
             return (false, 0);
@@ -721,7 +733,7 @@ contract Free_Pledge is Ownable{
         require(users[msg.sender].informations[_id].status == 1,"pledge has been finished");
         require(users[msg.sender].informations[_id]._type == 1, "invalid type");
         require(users[msg.sender].informations[_id].pledge_type == 1, "invalid pledge_type");
-        require(block.timestamp > users[msg.sender].informations[_id].latestReleasedTime && getTime(block.timestamp).sub(getTime(users[msg.sender].informations[_id].latestReleasedTime)).div(stepTime)>=lockTime,"pledge doesn't reach the time");
+        require(block.timestamp > users[msg.sender].informations[_id].latestReleasedTime && block.timestamp.sub(users[msg.sender].informations[_id].latestReleasedTime).div(stepTime)>=lockTime,"pledge doesn't reach the time");
         users[msg.sender].informations[_id].status = 2;
         LockInformation memory info = users[msg.sender].informations[_id];
         bytes32 newID = keccak256(abi.encodePacked(msg.sender,"3",info.lockAmount,block.timestamp));
@@ -729,7 +741,7 @@ contract Free_Pledge is Ownable{
         orderCheck[newID] = true;
         users[msg.sender].allKey.push(newID);
         users[msg.sender].informations[newID].lockAmount =  info.lockAmount;
-        users[msg.sender].informations[newID].latestReleasedTime = block.timestamp + stepTime;
+        users[msg.sender].informations[newID].latestReleasedTime = block.timestamp;
         users[msg.sender].informations[newID].totalReleaseDay = lockTime;
         users[msg.sender].informations[newID].status = 1;
         users[msg.sender].informations[newID]._type = 2;
@@ -778,19 +790,20 @@ contract Free_Pledge is Ownable{
                 uint releaseTime = users[msg.sender].informations[ids[i]].latestReleasedTime;
                 uint releaseAmount = users[msg.sender].informations[ids[i]].releasedAmount;
                 uint releaseTotalDay = users[msg.sender].informations[ids[i]].totalReleaseDay;
-                if (users[msg.sender].informations[ids[i]]._type == 1 && block.timestamp > releaseTime && getTime(block.timestamp).sub(getTime(releaseTime)).div(stepTime)>=lockTime){
-                    if (users[msg.sender].informations[ids[i]].pledge_type == 1){
+                if (users[msg.sender].informations[_id]._type == 1 && block.timestamp > releaseTime && block.timestamp.sub(releaseTime).div(stepTime)>=lockTime){
+                    if (users[msg.sender].informations[_id].pledge_type == 1){
                         totalCanRelease = totalCanRelease.add(a);
                     }else {
                         totalCanReleaseNoFee = totalCanReleaseNoFee.add(a);
                     }
                     users[msg.sender].informations[_id].releasedAmount = releaseAmount.add(a);
                     users[msg.sender].informations[_id].latestReleasedTime = block.timestamp;
+                    users[msg.sender].informations[_id].totalReleaseDay = 0;
                     users[msg.sender].informations[_id].status = 2;
                     emit Released(msg.sender, ids[i], a, block.timestamp);
                     emit PledgeFinished(msg.sender, ids[i], block.timestamp);
-                }else if(users[msg.sender].informations[ids[i]]._type == 2 ){
-                    uint d = getTime(block.timestamp).sub(getTime(releaseTime)).div(stepTime);
+                }else if(users[msg.sender].informations[_id]._type == 2 ){
+                    uint d = block.timestamp.sub(releaseTime).div(stepTime);
                     if ( d > 0){
                         if (d >= users[msg.sender].informations[_id].totalReleaseDay){
                             d =  users[msg.sender].informations[_id].totalReleaseDay;
@@ -807,14 +820,15 @@ contract Free_Pledge is Ownable{
                     }
                     users[msg.sender].informations[_id].latestReleasedTime = block.timestamp;
                     emit Released(msg.sender, _id, b, block.timestamp);
-                    if(users[msg.sender].informations[_id].releasedAmount==a){
+                    if(users[msg.sender].informations[_id].totalReleaseDay == 0){
                         users[msg.sender].informations[_id].status = 2;
                         emit PledgeFinished(msg.sender, ids[i], block.timestamp);
                     }
-                }else if (users[msg.sender].informations[ids[i]]._type == 4 && block.timestamp > releaseTime && getTime(block.timestamp).sub(getTime(releaseTime)).div(stepTime)>=lockTime2){
+                }else if (users[msg.sender].informations[_id]._type == 4 && block.timestamp > releaseTime && block.timestamp.sub(releaseTime).div(stepTime)>=lockTime2){
                     totalCanReleaseNoFee = totalCanReleaseNoFee.add(a);
                     users[msg.sender].informations[_id].releasedAmount = users[msg.sender].informations[_id].releasedAmount.add(a);
                     users[msg.sender].informations[_id].latestReleasedTime = block.timestamp;
+                    users[msg.sender].informations[_id].totalReleaseDay = 0;
                     users[msg.sender].informations[_id].status = 2;
                     emit Released(msg.sender, ids[i], a, block.timestamp);
                     emit PledgeFinished(msg.sender, ids[i], block.timestamp);
@@ -826,26 +840,123 @@ contract Free_Pledge is Ownable{
         users[msg.sender].lpAmount = users[msg.sender].lpAmount.sub(totalCanRelease).sub(totalCanReleaseNoFee);
 
         // release with fee charge, need remove liquidty
+        uint r = 0;
         if (totalCanRelease>0){
-            IBEP20(lpAddress).approve(exchagneSwap,totalCanRelease);
-            (uint a, uint b) = IExchangeSwap(exchagneSwap).removeLiquidity(usdtAddress, freeAddress, totalCanRelease, minA, minB, address(this), block.timestamp.add(100));
+            r = totalCanRelease.mul(releaseRate).div(1000);
+            IBEP20(lpAddress).approve(exchagneSwap,r);
+            (uint a, uint b) = IExchangeSwap(exchagneSwap).removeLiquidity(usdtAddress, freeAddress, r, minA, minB, address(this), block.timestamp.add(100));
 
             //*****************************************/
             //calculate fee
-            uint aFee = a.mul(releaseRate).div(1000);
-            uint bFee = b.mul(releaseRate).div(1000);
-            // transfer fee to dao address
-            IBEP20(usdtAddress).transfer(daoAddress, aFee);
-            IBEP20(freeAddress).transfer(daoAddress, bFee);
+            calcualtorFee(a,b);
             /******************************************/
-            // transfer to user
-            IBEP20(usdtAddress).transfer(msg.sender, a.sub(aFee));
-            IBEP20(freeAddress).transfer(msg.sender, b.sub(bFee));
         }
         // release with no fee, transfer direct to user
-        IBEP20(lpAddress).transfer(msg.sender, totalCanReleaseNoFee);
+        if (totalCanRelease.sub(r).add(totalCanReleaseNoFee)>0){
+            IBEP20(lpAddress).transfer(msg.sender, totalCanRelease.sub(r).add(totalCanReleaseNoFee));
+        }
 
         return (totalCanRelease, totalCanReleaseNoFee);
+    }
+
+    function calcualtorFee(uint a, uint b)internal{
+        uint aFee = a;
+        uint bFee = b;
+        // transfer fee to dao address
+        uint af1 = aFee.div(2);
+        uint bf1 = bFee.div(2);
+        IBEP20(usdtAddress).transfer(lppoolAddress, af1);
+        emit Reward2(usdtAddress,  af1, block.timestamp, 1);
+        IBEP20(usdtAddress).transfer(lpdaoAddress,af1.div(2));
+        emit Reward2(usdtAddress,  af1.div(2), block.timestamp, 2);
+        IBEP20(usdtAddress).transfer(foundaionAddress, aFee.sub(af1).sub(af1.div(2)));
+        emit Reward2(usdtAddress,  aFee.sub(af1).sub(af1.div(2)), block.timestamp, 3);
+
+
+
+        IBEP20(freeAddress).transfer(lppoolAddress, bf1);
+        emit Reward2(freeAddress,  bf1, block.timestamp, 1);
+        IBEP20(freeAddress).transfer(lpdaoAddress, bf1.div(2));
+        emit Reward2(freeAddress,  bf1.div(2), block.timestamp, 2);
+        IBEP20(freeAddress).transfer(foundaionAddress, bFee.sub(bf1).sub(bf1.div(2)));
+        emit Reward2(freeAddress,  bFee.sub(bf1).sub(bf1.div(2)), block.timestamp, 3);
+    }
+
+    /**
+    * @dev common function, process burn withdraw
+    */
+    function calculateBurnWithdraw(uint left,uint stake_days, uint releaseTotalDay, uint minA, uint minB) internal{
+        IBEP20(lpAddress).approve(exchagneSwap,left);
+        (uint a, uint b) = IExchangeSwap(exchagneSwap).removeLiquidity(usdtAddress, freeAddress, left, minA, minB, address(this), block.timestamp.add(100));
+        uint feeA = a.mul(releaseRate).div(1000);
+        uint feeB = b.mul(releaseRate).div(1000);
+        calcualtorFee(feeA, feeB);
+
+
+        //transfer usdt to user
+        IBEP20(usdtAddress).transfer(msg.sender,a.sub(feeA));
+
+        //transfer percent of free
+        uint amount = b.sub(feeB).mul(stake_days).div(releaseTotalDay);
+        IBEP20(freeAddress).transfer(burnWithdrawAddress, b.sub(amount).sub(feeB));
+        emit Reward2(freeAddress,  b.sub(amount).sub(feeB), block.timestamp, 4);
+        IBEP20(freeAddress).transfer(msg.sender, amount);
+    }
+
+    /**
+    * @dev common function, process burn withdraw
+    */
+    function calculateBurnWithdrawLp(uint left, uint minA, uint minB) internal{
+        IBEP20(lpAddress).approve(exchagneSwap,left);
+        (uint a, uint b) = IExchangeSwap(exchagneSwap).removeLiquidity(usdtAddress, freeAddress, left, minA, minB, address(this), block.timestamp.add(100));
+        uint feeA = a.mul(releaseRate).div(1000);
+        uint feeB = b.mul(releaseRate).div(1000);
+        // calcualtorFee(feeA, feeB);
+
+
+        //transfer usdt to user
+        IBEP20(usdtAddress).transfer(burnWithdrawAddress,feeA);
+        emit Reward2(usdtAddress,  feeA, block.timestamp, 4);
+        IBEP20(usdtAddress).transfer(msg.sender,a.sub(feeA));
+
+        //transfer percent of free
+        IBEP20(freeAddress).transfer(burnWithdrawAddress, feeB);
+        emit Reward2(freeAddress,  feeB, block.timestamp, 4);
+        IBEP20(freeAddress).transfer(msg.sender, b.sub(feeB));
+    }
+
+    function burnWithdraw(bytes32 id,uint minA,uint minB) public {
+        require(users[msg.sender].informations[id].status == 1, "pledge has been finished");
+        require(users[msg.sender].informations[id]._type != 3, "not support pledge");
+        uint releaseTime = users[msg.sender].informations[id].latestReleasedTime;
+        uint aa = users[msg.sender].informations[id].lockAmount;
+        uint releaseTotalDay = users[msg.sender].informations[id].totalReleaseDay;
+        uint stake_days = block.timestamp.sub(releaseTime).div(stepTime);
+        if (users[msg.sender].informations[id].pledge_type == 1){
+            if (users[msg.sender].informations[id]._type ==1 || users[msg.sender].informations[id]._type == 4){
+                calculateBurnWithdraw(aa, stake_days, releaseTotalDay,minA,minB);
+                emit Released(msg.sender, id, aa, block.timestamp);
+            }else if (users[msg.sender].informations[id]._type ==2 ){
+                uint left = aa.sub(users[msg.sender].informations[id].releasedAmount);
+                calculateBurnWithdraw(left, stake_days, releaseTotalDay,minA,minB);
+                emit Released(msg.sender, id, left, block.timestamp);
+            }
+        }else{
+            if (users[msg.sender].informations[id]._type ==1 || users[msg.sender].informations[id]._type == 4){
+                calculateBurnWithdrawLp(aa, minA, minB);
+                emit Released(msg.sender, id, aa, block.timestamp);
+            }else if (users[msg.sender].informations[id]._type ==2 ){
+                uint left = aa.sub(users[msg.sender].informations[id].releasedAmount);
+                calculateBurnWithdrawLp(left, minA, minB);
+                emit Released(msg.sender, id, left, block.timestamp);
+            }
+        }
+        users[msg.sender].informations[id].releasedAmount = aa;
+        users[msg.sender].informations[id].totalReleaseDay = 0;
+        users[msg.sender].informations[id].status = 2;
+        
+        emit PledgeFinished(msg.sender, id, block.timestamp);
+        
     }
 
     function getInforamtions(address addr, bytes32 id) public view returns(LockInformation memory){
