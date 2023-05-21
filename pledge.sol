@@ -534,7 +534,7 @@ contract Free_Pledge is Ownable{
     uint constant lockTime = 100; // 100 daysasd
     uint public releaseRate = 100;
     uint public burnRate_lp = 100;
-    uint public stepTime = 1 minutes;   // test set to 1 minutes, for stable use set to 1 days
+    uint public stepTime = 1 days;   // test set to 1 minutes, for stable use set to 1 days
     uint public stakeFeeRate = 0;
 
     event Pledged(address indexed addr, bytes32 indexed _id, uint indexed _type,  uint amount, uint timestamp ,uint pledge_type);
@@ -909,8 +909,8 @@ contract Free_Pledge is Ownable{
     function calculateBurnWithdrawLp(uint left, uint minA, uint minB) internal{
         IBEP20(lpAddress).approve(exchagneSwap,left);
         (uint a, uint b) = IExchangeSwap(exchagneSwap).removeLiquidity(usdtAddress, freeAddress, left, minA, minB, address(this), block.timestamp.add(100));
-        uint feeA = a.mul(releaseRate).div(1000);
-        uint feeB = b.mul(releaseRate).div(1000);
+        uint feeA = a.mul(burnRate_lp).div(1000);
+        uint feeB = b.mul(burnRate_lp).div(1000);
         // calcualtorFee(feeA, feeB);
 
 
