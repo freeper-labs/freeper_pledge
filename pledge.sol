@@ -542,6 +542,12 @@ contract Free_Pledge is Ownable{
     event PledgeFinished(address indexed addr, bytes32 indexed _id, uint timestamp);
     event PledgeChanged(address indexed addr, bytes32 indexed oldId, bytes32 indexed newId, uint timestamp);
     event Reward2(address indexed contractAddress, uint indexed amount,  uint timestamp,uint _type);
+
+    event StakeFeeChanged(uint indexed fee, uint timestamp);
+    event ReleaseFeeChanged(uint indexed fee, uint timestamp);
+    event BurnRateLpChanged(uint indexed fee, uint timestamp);
+
+
     bool isInitialized = false;
 
     mapping (bytes32=>bool) orderCheck;
@@ -582,16 +588,19 @@ contract Free_Pledge is Ownable{
     function modifyReleaseFeeRate(uint rate) public onlyOwner {
         require(rate <= 100,"out of range");
         releaseRate = rate;
+        emit ReleaseFeeChanged(releaseRate, block.timestamp);
     }
 
     function modifyBurnRateLp(uint rate) public onlyOwner {
         require(rate <= 100,"out of range");
         burnRate_lp = rate;
+        emit BurnRateLpChanged(burnRate_lp, block.timestamp);
     }
 
     function modifyStakeFeeRate(uint rate) public onlyOwner {
         require(rate <= 100,"out of range");
         stakeFeeRate = rate;
+        emit StakeFeeChanged(stakeFeeRate, block.timestamp);
     }
 
     /**
@@ -932,8 +941,12 @@ contract Free_Pledge is Ownable{
         uint aa = users[msg.sender].informations[id].lockAmount;
         uint releaseTotalDay = users[msg.sender].informations[id].totalReleaseDay;
         uint stake_days = block.timestamp.sub(releaseTime).div(stepTime);
+        if (stake_days >= releaseTotalDay){
+            stake_days = releaseTotalDay;
+        }
         if (users[msg.sender].informations[id].pledge_type == 1){
             if (users[msg.sender].informations[id]._type ==1 || users[msg.sender].informations[id]._type == 4){
+                
                 calculateBurnWithdraw(aa, stake_days, releaseTotalDay,minA,minB);
                 emit Released(msg.sender, id, aa, block.timestamp);
             }else if (users[msg.sender].informations[id]._type ==2 ){
